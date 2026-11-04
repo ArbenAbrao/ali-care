@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { api, messageFromError } from '../api/client';
-import { CheckCircle2, Check, Search, X, MapPin } from 'lucide-react';
-import { Logo, ease, severityStyle, initials } from '../components/ui';
+import { CheckCircle2, Check, Search, X, MapPin, ShieldCheck } from 'lucide-react';
+import { Logo, Spinner, ease, severityStyle, initials } from '../components/ui';
+import { toast } from '../components/Toast';
+import Loading from '../components/Loading';
 
 const levels = ['Low', 'Medium', 'High', 'Critical'];
 
@@ -21,6 +23,7 @@ export default function EmployeeReport() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [busy, setBusy] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [q, setQ] = useState('');
 
   useEffect(() => {
@@ -35,12 +38,15 @@ export default function EmployeeReport() {
   async function verify(e) {
     e.preventDefault();
     setError('');
+    setVerifying(true);
     try {
       const r = await api.post('/employee/lookup', { employeeId });
       setEmployee(r.data.employee);
       setRemaining(r.data.remaining);
     } catch (e) {
       setError(messageFromError(e));
+    } finally {
+      setVerifying(false);
     }
   }
 
@@ -49,6 +55,7 @@ export default function EmployeeReport() {
     setError('');
     if (reported.length === 0) {
       setError('Select at least one employee to report.');
+      toast.info('Pick who you are reporting', 'Select at least one employee from the list.');
       return;
     }
     setBusy(true);
@@ -68,6 +75,7 @@ export default function EmployeeReport() {
       setSubject('');
       setReported([]);
       setQ('');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
       setError(messageFromError(e));
     } finally {
@@ -81,19 +89,23 @@ export default function EmployeeReport() {
   const shown = candidates.filter((x) => x.full_name.toLowerCase().includes(q.toLowerCase())).slice(0, 60);
   const selected = candidates.filter((x) => reported.includes(x.id));
 
-  if (!context && !error)
-    return <div className="min-h-screen grid place-items-center text-slate-500">Loading secure reporting form…</div>;
+  if (!context && !error) return <Loading />;
 
   const step = employee ? 2 : 1;
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[color:var(--paper)] px-4 py-8 sm:py-12">
-      <div className="blob -top-40 -right-24 h-96 w-96 bg-teal-300" style={{ opacity: 0.35 }} />
+      <div className="blob -top-40 -right-24 h-96 w-96 bg-blue-300" style={{ opacity: 0.35 }} />
       <div className="blob -bottom-48 -left-32 h-[26rem] w-[26rem] bg-emerald-200" style={{ opacity: 0.4 }} />
 
       <div className="relative max-w-2xl mx-auto">
-        <header className="flex items-center gap-3 mb-6">
-          <Logo size={46} />
+        <motion.header
+          className="flex items-center gap-3 mb-6"
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease }}
+        >
+          <Logo size={50} />
           <div>
             <h1 className="font-extrabold text-xl leading-tight">ALI-CARE</h1>
             <p className="text-sm text-slate-500">Confidential employee reporting</p>
@@ -103,12 +115,12 @@ export default function EmployeeReport() {
               <span
                 key={n}
                 className={`h-1.5 rounded-full transition-all duration-500 ${
-                  n <= step ? 'w-10 bg-teal-600' : 'w-6 bg-teal-900/15'
+                  n <= step ? 'w-10 bg-gradient-to-r from-[#2f5fd9] to-[#4c9f38]' : 'w-6 bg-blue-900/15'
                 }`}
               />
             ))}
           </div>
-        </header>
+        </motion.header>
 
         <AnimatePresence initial={false}>
           {error && (
@@ -132,8 +144,8 @@ export default function EmployeeReport() {
               transition={{ duration: 0.35, ease }}
             >
               <motion.span
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
+                initial={{ scale: 0, rotate: -60 }}
+                animate={{ scale: 1, rotate: 0 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 14, delay: 0.1 }}
               >
                 <CheckCircle2 />
@@ -143,8 +155,13 @@ export default function EmployeeReport() {
           )}
         </AnimatePresence>
 
-        <section className="panel p-5 sm:p-8">
-          <div className="mb-6 flex items-center gap-3 rounded-2xl bg-teal-50 p-4">
+        <motion.section
+          className="panel p-5 sm:p-8"
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease, delay: 0.1 }}
+        >
+          <div className="mb-6 flex items-center gap-3 rounded-2xl bg-gradient-to-r from-teal-50 to-emerald-50 p-4">
             <span className="grid h-10 w-10 place-items-center rounded-xl bg-white text-teal-700 shadow-sm">
               <MapPin size={18} />
             </span>
@@ -183,7 +200,17 @@ export default function EmployeeReport() {
                       placeholder="Enter your Employee ID"
                     />
                   </label>
-                  <button className="btn btn-primary w-full !py-3.5">Continue securely</button>
+                  <button disabled={verifying} className="btn btn-primary w-full !py-3.5">
+                    {verifying ? (
+                      <>
+                        <Spinner /> Verifying…
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck size={17} /> Continue securely
+                      </>
+                    )}
+                  </button>
                 </form>
               ) : (
                 <form onSubmit={submit} className="space-y-6">
@@ -223,6 +250,7 @@ export default function EmployeeReport() {
                                   initial={{ opacity: 0, scale: 0.8 }}
                                   animate={{ opacity: 1, scale: 1 }}
                                   exit={{ opacity: 0, scale: 0.8 }}
+                                  whileHover={{ scale: 1.04 }}
                                   onClick={() => toggle(x.id)}
                                   className="inline-flex items-center gap-1.5 rounded-full bg-teal-700 py-1.5 pl-3 pr-2 text-sm font-semibold text-white"
                                 >
@@ -260,7 +288,15 @@ export default function EmployeeReport() {
                                   {initials(x.full_name)}
                                 </span>
                                 <span className="flex-1 font-medium">{x.full_name}</span>
-                                {on && <Check size={17} className="text-teal-700" />}
+                                {on && (
+                                  <motion.span
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    transition={{ type: 'spring', stiffness: 500, damping: 15 }}
+                                  >
+                                    <Check size={17} className="text-teal-700" />
+                                  </motion.span>
+                                )}
                               </button>
                             );
                           })}
@@ -328,7 +364,13 @@ export default function EmployeeReport() {
                       </label>
 
                       <button disabled={busy} className="btn btn-primary w-full !py-3.5">
-                        {busy ? 'Submitting securely…' : 'Submit confidential complaint'}
+                        {busy ? (
+                          <>
+                            <Spinner /> Submitting securely…
+                          </>
+                        ) : (
+                          'Submit confidential complaint'
+                        )}
                       </button>
                     </>
                   )}
@@ -336,7 +378,7 @@ export default function EmployeeReport() {
               )}
             </motion.div>
           </AnimatePresence>
-        </section>
+        </motion.section>
 
         <p className="text-xs text-slate-500 mt-4 leading-relaxed">
           Your complaint message is encrypted at rest. Please share only information relevant to the concern. If you are in

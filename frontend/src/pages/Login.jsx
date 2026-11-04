@@ -3,7 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { api, messageFromError } from '../api/client';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
-import { Logo, ease } from '../components/ui';
+import { Logo, Spinner, ease } from '../components/ui';
+import { SignInOverlay } from '../components/Loading';
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export default function Login() {
   const [mode, setMode] = useState('admin');
@@ -14,6 +17,8 @@ export default function Login() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [showPw, setShowPw] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [entering, setEntering] = useState(false);
   const nav = useNavigate();
 
   useEffect(() => {
@@ -60,33 +65,46 @@ export default function Login() {
   async function admin(e) {
     e.preventDefault();
     setError('');
+    setBusy(true);
     try {
       await api.post('/auth/admin/login', { login, password });
+      setEntering(true);
+      await sleep(1900);
       nav('/app');
     } catch (e) {
       setError(messageFromError(e));
+    } finally {
+      setBusy(false);
     }
   }
 
   async function requestOtp(e) {
     e.preventDefault();
     setError('');
+    setBusy(true);
     try {
       await api.post('/auth/superadmin/request-otp', { email: login, captchaToken });
       setPending(true);
     } catch (e) {
       setError(messageFromError(e));
+    } finally {
+      setBusy(false);
     }
   }
 
   async function verify(e) {
     e.preventDefault();
     setError('');
+    setBusy(true);
     try {
       await api.post('/auth/superadmin/verify-otp', { otp });
+      setEntering(true);
+      await sleep(1900);
       nav('/app');
     } catch (e) {
       setError(messageFromError(e));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -98,39 +116,58 @@ export default function Login() {
 
   const formKey = mode === 'admin' ? 'admin' : pending ? 'super-otp' : 'super-email';
 
+  const submitLabel = (text, busyText) =>
+    busy ? (
+      <>
+        <Spinner /> {busyText}
+      </>
+    ) : (
+      text
+    );
+
   return (
     <div className="min-h-screen grid lg:grid-cols-[1.05fr_1fr] bg-white">
+      <AnimatePresence>{entering && <SignInOverlay />}</AnimatePresence>
+
       {/* Brand panel */}
       <div className="relative hidden lg:flex flex-col justify-between overflow-hidden bg-[color:var(--sidebar)] p-14 text-white">
-        <div className="blob -top-32 -left-24 h-[28rem] w-[28rem] bg-teal-500" />
-        <div className="blob -bottom-40 right-0 h-[30rem] w-[30rem] bg-emerald-400/60" style={{ animationDelay: '-6s' }} />
-        <div className="blob top-1/3 left-1/2 h-64 w-64 bg-cyan-400/40" style={{ animationDelay: '-11s' }} />
+        <div className="blob -top-32 -left-24 h-[28rem] w-[28rem] bg-blue-500" />
+        <div className="blob -bottom-40 right-0 h-[30rem] w-[30rem] bg-emerald-500/50" style={{ animationDelay: '-6s' }} />
+        <div className="blob top-1/3 left-1/2 h-64 w-64 bg-sky-400/40" style={{ animationDelay: '-11s' }} />
 
         <Link to="/" className="relative flex items-center gap-3 w-fit">
-          <Logo size={44} tone="dark" />
+          <Logo size={48} tone="dark" />
           <b className="text-xl tracking-wide">ALI-CARE</b>
         </Link>
 
         <div className="relative">
+          <motion.div
+            className="float mb-8"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.9, ease }}
+          >
+            <Logo size={96} tone="dark" />
+          </motion.div>
           <motion.h1
-            className="font-display text-[72px] leading-[0.98] max-w-lg"
+            className="font-display text-[68px] leading-[0.98] max-w-lg"
             initial={{ opacity: 0, y: 28 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.9, ease }}
+            transition={{ duration: 0.9, ease, delay: 0.1 }}
           >
             Care for people. Protect every concern.
           </motion.h1>
           <motion.p
-            className="mt-6 max-w-md text-teal-50/70 leading-relaxed"
+            className="mt-6 max-w-md text-blue-50/70 leading-relaxed"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.8, delay: 0.35 }}
+            transition={{ duration: 0.8, delay: 0.45 }}
           >
             Authorized access to confidential complaint management and reporting.
           </motion.p>
         </div>
 
-        <p className="relative text-xs text-teal-100/50">Arrowgo-Logistics Inc. · ALI-CARE</p>
+        <p className="relative text-xs text-blue-100/50">Arrowgo-Logistics Inc. · ALI-CARE</p>
       </div>
 
       {/* Form panel */}
@@ -160,7 +197,7 @@ export default function Login() {
                 {mode === id && (
                   <motion.span
                     layoutId="login-pill"
-                    className="absolute inset-0 rounded-xl bg-gradient-to-b from-[#14877d] to-[#0f766e]"
+                    className="absolute inset-0 rounded-xl bg-gradient-to-b from-[#2f5fd9] to-[#1f46b8]"
                     transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                   />
                 )}
@@ -224,7 +261,9 @@ export default function Login() {
                       </button>
                     </span>
                   </label>
-                  <button className="btn btn-primary w-full !py-3.5">Sign in</button>
+                  <button disabled={busy} className="btn btn-primary w-full !py-3.5">
+                    {submitLabel('Sign in', 'Signing in…')}
+                  </button>
                 </form>
               ) : !pending ? (
                 <form onSubmit={requestOtp} className="space-y-4">
@@ -255,7 +294,9 @@ export default function Login() {
                       )}
                     </div>
                   </div>
-                  <button className="btn btn-primary w-full !py-3.5">Email verification code</button>
+                  <button disabled={busy} className="btn btn-primary w-full !py-3.5">
+                    {submitLabel('Email verification code', 'Sending code…')}
+                  </button>
                 </form>
               ) : (
                 <form onSubmit={verify} className="space-y-4">
@@ -274,7 +315,9 @@ export default function Login() {
                       autoFocus
                     />
                   </label>
-                  <button className="btn btn-primary w-full !py-3.5">Verify and sign in</button>
+                  <button disabled={busy} className="btn btn-primary w-full !py-3.5">
+                    {submitLabel('Verify and sign in', 'Verifying…')}
+                  </button>
                 </form>
               )}
             </motion.div>

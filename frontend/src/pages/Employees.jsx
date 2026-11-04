@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { api, messageFromError } from '../api/client';
-import { Plus, Upload, Download, Edit3, Search, FileSpreadsheet } from 'lucide-react';
+import { Plus, Upload, Download, Edit3, Search, FileSpreadsheet, Users, UserCheck, UserX, Building2, UserPlus, UserCog, UserRound, KeyRound, Lock, MapPin } from 'lucide-react';
 import Modal from '../components/Modal';
-import { PageHeader, ease, initials } from '../components/ui';
+import Pagination, { usePagination } from '../components/Pagination';
+import { toast } from '../components/Toast';
+import { PageHeader, Spinner, Counter, container, item, ease, initials } from '../components/ui';
 
 const blank = { employeeId: '', name: '', status: 'Active', hubId: '', departmentId: '' };
+const PAGE_SIZE = 10;
 
 export default function Employees() {
   const [items, setItems] = useState([]);
@@ -18,6 +21,9 @@ export default function Employees() {
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const pg = usePagination(items, PAGE_SIZE);
 
   async function load() {
     try {
@@ -53,6 +59,7 @@ export default function Employees() {
 
   async function save(e) {
     e.preventDefault();
+    setSaving(true);
     try {
       const data = { ...form, hubId: Number(form.hubId), departmentId: Number(form.departmentId) };
       if (editing) await api.put(`/employee/${editing}`, data);
@@ -63,6 +70,8 @@ export default function Employees() {
       load();
     } catch (e) {
       setError(messageFromError(e));
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -70,12 +79,18 @@ export default function Employees() {
     if (!file) return;
     const fd = new FormData();
     fd.append('file', file);
+    setImporting(true);
     try {
       const r = await api.post('/employee/import', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       setSummary(r.data);
+      if (r.data.invalid?.length > 0)
+        toast.info('Some rows were skipped', `${r.data.invalid.length} invalid row(s) — see the import summary.`);
+      setFile(null);
       load();
     } catch (e) {
       setError(messageFromError(e));
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -96,13 +111,32 @@ export default function Employees() {
 
       {error && <div className="alert-error mb-4">{error}</div>}
 
+      <motion.div variants={container} initial="hidden" animate="show" className="mb-5 grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {[
+          ['Employees shown', items.length, Users, 'from-blue-50 to-sky-50 text-teal-700'],
+          ['Active', items.filter((x) => x.status === 'Active').length, UserCheck, 'from-emerald-50 to-lime-50 text-emerald-700'],
+          ['Inactive', items.filter((x) => x.status !== 'Active').length, UserX, 'from-slate-100 to-slate-50 text-slate-500'],
+          ['Hubs', new Set(items.map((x) => x.hub_name)).size, Building2, 'from-indigo-50 to-blue-50 text-indigo-600'],
+        ].map(([label, value, Icon, tint]) => (
+          <motion.div key={label} variants={item} className="panel flex items-center gap-4 p-4">
+            <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${tint}`}>
+              <Icon size={20} />
+            </span>
+            <div>
+              <Counter value={value} className="block text-2xl font-extrabold tabular-nums leading-none" />
+              <span className="mt-1 block text-xs text-slate-500">{label}</span>
+            </div>
+          </motion.div>
+        ))}
+      </motion.div>
+
       <div className="panel p-5 mb-5">
         <h2 className="font-bold">Bulk import CSV / XLSX</h2>
         <p className="text-sm text-slate-500 mt-1">
           Required columns: Name, Status, Branch, Department, Employee ID. Name format: Last Name, First Name.
         </p>
         <div className="mt-4 flex flex-col sm:flex-row gap-3">
-          <label className="flex flex-1 cursor-pointer items-center gap-3 rounded-xl border border-dashed border-teal-300 bg-teal-50/50 px-4 py-3 transition-colors hover:bg-teal-50">
+          <label className="flex flex-1 cursor-pointer items-center gap-3 rounded-xl border border-dashed border-teal-300 bg-teal-50/50 px-4 py-3 transition-all hover:bg-teal-50 hover:border-teal-400">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-teal-700 shadow-sm">
               <FileSpreadsheet size={18} />
             </span>
@@ -117,13 +151,22 @@ export default function Employees() {
               onChange={(e) => setFile(e.target.files?.[0] || null)}
             />
           </label>
-          <button className="btn btn-primary" onClick={importFile} disabled={!file}>
-            <Upload size={16} /> Import file
+          <button className="btn btn-primary" onClick={importFile} disabled={!file || importing}>
+            {importing ? (
+              <>
+                <Spinner size={16} /> Importing…
+              </>
+            ) : (
+              <>
+                <Upload size={16} /> Import file
+              </>
+            )}
           </button>
           <a
             className="btn btn-muted"
             href="data:text/csv;charset=utf-8,Name%2CStatus%2CBranch%2CDepartment%2CEmployee%20ID%0A%22Santos%2C%20Maria%22%2CActive%2CMarilao%20Hub%2COperations%2C100001"
             download="ali-care-import-template.csv"
+            onClick={() => toast.info('Template downloaded', 'Fill it in, then import it here.')}
           >
             <Download size={16} /> Template
           </a>
@@ -175,7 +218,10 @@ export default function Employees() {
           <input
             className="field !pl-10"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              pg.setPage(1);
+              setSearch(e.target.value);
+            }}
             placeholder="Search employees by name"
           />
         </div>
@@ -199,16 +245,16 @@ export default function Employees() {
                     </td>
                   </tr>
                 ))}
-              {items.map((x, i) => (
+              {pg.slice.map((x, i) => (
                 <motion.tr
                   key={x.id}
-                  initial={{ opacity: 0, y: 6 }}
+                  initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, ease, delay: Math.min(i, 12) * 0.025 }}
+                  transition={{ duration: 0.35, ease, delay: Math.min(i, 12) * 0.03 }}
                 >
                   <td>
                     <div className="flex items-center gap-3">
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-teal-50 text-xs font-bold text-teal-800">
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-teal-100 to-emerald-100 text-xs font-bold text-teal-800">
                         {initials(x.full_name)}
                       </span>
                       <span className="font-semibold">{x.full_name}</span>
@@ -233,85 +279,142 @@ export default function Employees() {
           </table>
           {loaded && items.length === 0 && <div className="p-10 text-center text-slate-500">No employees found.</div>}
         </div>
+        <Pagination {...pg} onPage={pg.setPage} label="employees" />
       </div>
 
       {open && (
-        <Modal title={editing ? 'Edit employee' : 'Add employee'} onClose={() => setOpen(false)}>
-          <form onSubmit={save} className="space-y-4">
-            <label className="block">
-              <span className="label">Employee ID</span>
-              <input
-                className="field"
-                value={form.employeeId}
-                onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
-                required
-                placeholder={editing ? 'Re-enter Employee ID to update' : 'Employee ID'}
-              />
-              <span className="text-xs text-slate-500 mt-1.5 block">
-                Employee ID is stored encrypted. Re-enter it when editing.
-              </span>
-            </label>
-            <label className="block">
-              <span className="label">Name (Last Name, First Name)</span>
-              <input
-                className="field"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                required
-              />
-            </label>
-            <label className="block">
-              <span className="label">Status</span>
-              <select
-                className="field"
-                value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value })}
-              >
-                <option>Active</option>
-                <option>Inactive</option>
-              </select>
-            </label>
-            <div className="grid sm:grid-cols-2 gap-4">
+        <Modal
+          title={editing ? 'Edit employee' : 'Add employee'}
+          subtitle={editing ? `Updating ${form.name || 'record'}` : 'Create a new employee record'}
+          icon={editing ? UserCog : UserPlus}
+          onClose={() => setOpen(false)}
+        >
+          {(close) => (
+            <form onSubmit={save} className="space-y-5">
+              <div className="flex items-start gap-3 rounded-2xl bg-gradient-to-r from-teal-50 to-emerald-50 p-4 text-sm text-teal-900">
+                <Lock size={17} className="mt-0.5 shrink-0" />
+                <p className="leading-relaxed">
+                  Employee IDs are stored encrypted and are never shown to administrators.
+                  {editing && ' Re-enter the ID to save changes.'}
+                </p>
+              </div>
+
               <label className="block">
-                <span className="label">Branch / Hub</span>
-                <select
-                  className="field"
-                  value={form.hubId}
-                  onChange={(e) => {
-                    const h = e.target.value;
-                    setForm({ ...form, hubId: h, departmentId: '' });
-                  }}
-                  required
-                >
-                  <option value="">Select hub</option>
-                  {lookups.hubs.map((h) => (
-                    <option key={h.id} value={h.id}>
-                      {h.name}
-                    </option>
+                <span className="label">Employee ID</span>
+                <span className="relative block">
+                  <KeyRound size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    className="field !pl-10"
+                    value={form.employeeId}
+                    onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
+                    required
+                    autoComplete="off"
+                    placeholder={editing ? 'Re-enter Employee ID to update' : 'e.g. 100001'}
+                  />
+                </span>
+              </label>
+
+              <label className="block">
+                <span className="label">Name (Last Name, First Name)</span>
+                <span className="relative block">
+                  <UserRound size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    className="field !pl-10"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    required
+                    placeholder="e.g. Santos, Maria"
+                  />
+                </span>
+              </label>
+
+              <div>
+                <span className="label">Status</span>
+                <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1.5">
+                  {[
+                    ['Active', 'Can sign in and report', 'bg-emerald-500'],
+                    ['Inactive', 'Disabled, no access', 'bg-slate-400'],
+                  ].map(([v, hint, dot]) => (
+                    <button
+                      type="button"
+                      key={v}
+                      onClick={() => setForm({ ...form, status: v })}
+                      className={`relative rounded-xl px-3 py-2.5 text-left transition-colors ${form.status === v ? 'text-slate-900' : 'text-slate-500'}`}
+                    >
+                      {form.status === v && (
+                        <motion.span layoutId="status-pick" className="absolute inset-0 rounded-xl bg-white shadow-sm" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />
+                      )}
+                      <span className="relative z-10 flex items-center gap-2 text-sm font-bold">
+                        <span className={`h-2 w-2 rounded-full ${dot}`} /> {v}
+                      </span>
+                      <span className="relative z-10 mt-0.5 block text-xs text-slate-500">{hint}</span>
+                    </button>
                   ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="label">Department</span>
-                <select
-                  className="field"
-                  value={form.departmentId}
-                  onChange={(e) => setForm({ ...form, departmentId: e.target.value })}
-                  required
-                >
-                  <option value="">Select department</option>
-                  {lookups.departments
-                    .filter((d) => String(d.hub_id) === String(form.hubId))
-                    .map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-            </div>
-            <button className="btn btn-primary w-full">Save employee</button>
-          </form>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="label">Branch / Hub</span>
+                  <span className="relative block">
+                    <MapPin size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <select
+                      className="field !pl-10"
+                      value={form.hubId}
+                      onChange={(e) => setForm({ ...form, hubId: e.target.value, departmentId: '' })}
+                      required
+                    >
+                      <option value="">Select hub</option>
+                      {lookups.hubs.map((h) => (
+                        <option key={h.id} value={h.id}>
+                          {h.name}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
+                </label>
+                <label className="block">
+                  <span className="label">Department</span>
+                  <span className="relative block">
+                    <Building2 size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <select
+                      className="field !pl-10"
+                      value={form.departmentId}
+                      onChange={(e) => setForm({ ...form, departmentId: e.target.value })}
+                      required
+                      disabled={!form.hubId}
+                    >
+                      <option value="">{form.hubId ? 'Select department' : 'Pick a hub first'}</option>
+                      {lookups.departments
+                        .filter((d) => String(d.hub_id) === String(form.hubId))
+                        .map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))}
+                    </select>
+                  </span>
+                </label>
+              </div>
+
+              <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+                <button type="button" className="btn btn-muted" onClick={close}>
+                  Cancel
+                </button>
+                <button disabled={saving} className="btn btn-primary sm:min-w-40">
+                  {saving ? (
+                    <>
+                      <Spinner /> Saving…
+                    </>
+                  ) : editing ? (
+                    'Save changes'
+                  ) : (
+                    'Add employee'
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
         </Modal>
       )}
     </div>

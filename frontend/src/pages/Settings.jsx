@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { api, messageFromError } from '../api/client';
-import { Download, RefreshCw, Plus, QrCode, UserCog, ScrollText } from 'lucide-react';
+import { Download, RefreshCw, Plus, QrCode, UserCog, ScrollText, UserPlus, UserRound, Mail, KeyRound, Eye, EyeOff, Shield, Crown, Check, Link2, ShieldCheck } from 'lucide-react';
 import Modal from '../components/Modal';
+import Pagination, { usePagination } from '../components/Pagination';
+import { toast } from '../components/Toast';
 import { PageHeader, ease } from '../components/ui';
 
 const allTabs = [
@@ -10,6 +12,9 @@ const allTabs = [
   ['accounts', 'Accounts Management', UserCog, true],
   ['logs', 'Access Logs', ScrollText, true],
 ];
+
+const pwStrength = (pw) =>
+  (pw.length >= 12 ? 1 : 0) + (/[a-z]/.test(pw) && /[A-Z]/.test(pw) ? 1 : 0) + (/\d/.test(pw) ? 1 : 0) + (/[^A-Za-z0-9]/.test(pw) ? 1 : 0);
 
 export default function Settings() {
   const [tab, setTab] = useState('qr');
@@ -34,7 +39,15 @@ export default function Settings() {
   const [linkTarget, setLinkTarget] = useState(null); // existing account being linked
   const [linkEmployeeId, setLinkEmployeeId] = useState('');
   const [modal, setModal] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+  const pwScore = form.password ? Math.max(1, pwStrength(form.password)) : 0;
   const [error, setError] = useState('');
+
+  // One paginator per list so each keeps its own page.
+  const hubPg = usePagination(qr.hubs, 6);
+  const deptPg = usePagination(qr.departments, 6);
+  const accountPg = usePagination(accounts, 10);
+  const logPg = usePagination(logs, 15);
 
   async function load() {
     try {
@@ -110,7 +123,10 @@ export default function Settings() {
     try {
       const r = await api.post('/employee/qr', { type, id });
       const w = window.open('', '_blank', 'width=420,height=500');
-      if (!w) return;
+      if (!w) {
+        toast.info('Pop-up blocked', 'Allow pop-ups for this site to view the QR code.');
+        return;
+      }
       w.document.write(
         `<title>ALI-CARE QR</title><div style="font:16px Arial;padding:24px;text-align:center"><h2>ALI-CARE ${type} QR</h2><p>Print and place in the designated location.</p><img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
           r.data.url
@@ -154,7 +170,7 @@ export default function Settings() {
             {tab === id && (
               <motion.span
                 layoutId="settings-tab"
-                className="absolute inset-0 rounded-xl bg-gradient-to-b from-[#14877d] to-[#0f766e] shadow-[0_8px_18px_-8px_rgba(15,118,110,0.7)]"
+                className="absolute inset-0 rounded-xl bg-gradient-to-b from-[#2f5fd9] to-[#1f46b8] shadow-[0_8px_18px_-8px_rgba(34,80,200,0.7)]"
                 transition={{ type: 'spring', stiffness: 420, damping: 34 }}
               />
             )}
@@ -174,18 +190,30 @@ export default function Settings() {
         >
           {tab === 'qr' && (
             <div className="space-y-5">
-              <section className="panel p-6">
-                <div className="flex justify-between items-center mb-2">
+              <section className="panel overflow-hidden">
+                <div className="flex justify-between items-center p-6 pb-2">
                   <h2 className="font-bold text-lg">Hub QR codes</h2>
-                  <button className="btn btn-muted" onClick={load}>
+                  <button
+                    className="btn btn-muted"
+                    onClick={async () => {
+                      await load();
+                      toast.info('Refreshed', 'QR code list is up to date.');
+                    }}
+                  >
                     <RefreshCw size={16} /> Refresh
                   </button>
                 </div>
-                {qr.hubs.map((h) => qrRow(h.id, h.name, 'QR links to hub-specific employee reporting', () => makeQr('hub', h.id)))}
+                <div className="px-6">
+                  {hubPg.slice.map((h) => qrRow(h.id, h.name, 'QR links to hub-specific employee reporting', () => makeQr('hub', h.id)))}
+                </div>
+                <Pagination {...hubPg} onPage={hubPg.setPage} label="hubs" />
               </section>
-              <section className="panel p-6">
-                <h2 className="font-bold text-lg mb-2">Department QR codes</h2>
-                {qr.departments.map((d) => qrRow(d.id, d.name, d.hub_name, () => makeQr('department', d.id)))}
+              <section className="panel overflow-hidden">
+                <h2 className="font-bold text-lg p-6 pb-2">Department QR codes</h2>
+                <div className="px-6">
+                  {deptPg.slice.map((d) => qrRow(d.id, d.name, d.hub_name, () => makeQr('department', d.id)))}
+                </div>
+                <Pagination {...deptPg} onPage={deptPg.setPage} label="departments" />
               </section>
             </div>
           )}
@@ -211,7 +239,7 @@ export default function Settings() {
                     </tr>
                   </thead>
                   <tbody>
-                    {accounts.map((a) => (
+                    {accountPg.slice.map((a) => (
                       <tr key={a.id}>
                         <td className="tabular-nums">{a.id}</td>
                         <td className="max-w-64 truncate">{a.login || '—'}</td>
@@ -241,7 +269,9 @@ export default function Settings() {
                     ))}
                   </tbody>
                 </table>
+                {accounts.length === 0 && <div className="p-10 text-center text-slate-500">No accounts found.</div>}
               </div>
+              <Pagination {...accountPg} onPage={accountPg.setPage} label="accounts" />
             </section>
           )}
 
@@ -266,7 +296,7 @@ export default function Settings() {
                     </tr>
                   </thead>
                   <tbody>
-                    {logs.map((l) => (
+                    {logPg.slice.map((l) => (
                       <tr key={l.id}>
                         <td className="whitespace-nowrap tabular-nums">{l.created_at}</td>
                         <td>{l.account_id || 'Unknown'}</td>
@@ -278,74 +308,175 @@ export default function Settings() {
                     ))}
                   </tbody>
                 </table>
+                {logs.length === 0 && <div className="p-10 text-center text-slate-500">No access events yet.</div>}
               </div>
+              <Pagination {...logPg} onPage={logPg.setPage} label="events" />
             </section>
           )}
         </motion.div>
       </AnimatePresence>
 
       {modal && (
-        <Modal title="Create account" onClose={() => setModal(false)}>
-          <form onSubmit={createAccount} className="space-y-4">
-            <label className="block">
-              <span className="label">Email or username</span>
-              <input
-                className="field"
-                value={form.login}
-                onChange={(e) => setForm({ ...form, login: e.target.value })}
-                required
-              />
-            </label>
-            <label className="block">
-              <span className="label">Initial password (12+ characters)</span>
-              <input
-                className="field"
-                type="password"
-                minLength={12}
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                required
-              />
-            </label>
-            <label className="block">
-              <span className="label">Role</span>
-              <select
-                className="field"
-                value={form.role}
-                onChange={(e) => setForm({ ...form, role: e.target.value })}
-              >
-                <option>Admin</option>
-                <option>Superadmin</option>
-              </select>
-            </label>
-            <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
-              <span className="label">Employee record (required)</span>
-              <p className="text-xs text-slate-500 mb-2">
-                Admins and superadmins are employees too. This record lets staff report them, and
-                hides those complaints from the reported account.
-              </p>
-              <div className="flex gap-2 mb-3">
-                {[
-                  ['existing', 'Use existing record'],
-                  ['new', 'Create new record'],
-                ].map(([v, t]) => (
-                  <button
-                    type="button"
-                    key={v}
-                    onClick={() => setForm({ ...form, linkMode: v })}
-                    className={`btn ${form.linkMode === v ? 'btn-primary' : 'btn-muted'}`}
-                  >
-                    {t}
-                  </button>
-                ))}
+        <Modal title="Create account" subtitle="Give someone access to ALI-CARE" icon={UserPlus} onClose={() => setModal(false)}>
+          {(close) => (
+            <form onSubmit={createAccount} className="space-y-5">
+              <label className="block">
+                <span className="label">Email or username</span>
+                <span className="relative block">
+                  <Mail size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input className="field !pl-10" value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} required autoComplete="off" placeholder="name@arrowgo.com" />
+                </span>
+              </label>
+
+              <div>
+                <label className="block">
+                  <span className="label">Initial password</span>
+                  <span className="relative block">
+                    <KeyRound size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      className="field !pl-10 !pr-11"
+                      type={showPw ? 'text' : 'password'}
+                      minLength={12}
+                      value={form.password}
+                      onChange={(e) => setForm({ ...form, password: e.target.value })}
+                      required
+                      autoComplete="new-password"
+                      placeholder="At least 12 characters"
+                    />
+                    <button type="button" onClick={() => setShowPw(!showPw)} aria-label={showPw ? 'Hide password' : 'Show password'} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700">
+                      {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </span>
+                </label>
+                <div className="mt-2 flex items-center gap-3">
+                  <div className="grid flex-1 grid-cols-4 gap-1.5">
+                    {[1, 2, 3, 4].map((n) => (
+                      <span key={n} className={`h-1.5 rounded-full transition-colors duration-300 ${pwScore >= n ? ['', 'bg-red-400', 'bg-amber-400', 'bg-lime-500', 'bg-emerald-500'][pwScore] : 'bg-slate-200'}`} />
+                    ))}
+                  </div>
+                  <span className="w-16 text-right text-xs font-semibold text-slate-500">
+                    {form.password ? ['Too short', 'Weak', 'Okay', 'Good', 'Strong'][form.password.length < 12 ? 0 : pwScore] : ''}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-xs text-slate-500">Use 12+ characters with upper and lower case, a number and a symbol.</p>
               </div>
-              {form.linkMode === 'existing' ? (
-                <select
-                  className="field"
-                  value={form.employeeId}
-                  onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
-                  required
-                >
+
+              <div>
+                <span className="label">Role</span>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {[
+                    ['Admin', Shield, 'Reviews complaints, manages employees and QR codes.'],
+                    ['Superadmin', Crown, 'Everything an Admin can do, plus accounts and access logs.'],
+                  ].map(([r, Icon, desc]) => {
+                    const on = form.role === r;
+                    return (
+                      <button type="button" key={r} onClick={() => setForm({ ...form, role: r })} className={`relative rounded-2xl border p-4 text-left transition-all ${on ? 'border-transparent ring-2 ring-[#2f5fd9] bg-blue-50/50' : 'border-[color:var(--line)] hover:bg-slate-50'}`}>
+                        <span className="flex items-center justify-between">
+                          <span className={`grid h-9 w-9 place-items-center rounded-xl ${on ? 'bg-gradient-to-br from-[#2f5fd9] to-[#1f46b8] text-white' : 'bg-slate-100 text-slate-500'}`}>
+                            <Icon size={17} />
+                          </span>
+                          {on && (
+                            <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 15 }} className="grid h-5 w-5 place-items-center rounded-full bg-[#2f5fd9] text-white">
+                              <Check size={13} />
+                            </motion.span>
+                          )}
+                        </span>
+                        <span className="mt-3 block font-bold">{r}</span>
+                        <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">{desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                <div className="flex items-center gap-2">
+                  <UserRound size={16} className="text-teal-700" />
+                  <span className="text-sm font-bold">Employee record (required)</span>
+                </div>
+                <p className="mb-3 mt-1 text-xs leading-relaxed text-slate-500">
+                  Admins and superadmins are employees too. This record lets staff report them, and hides those complaints from the reported account.
+                </p>
+                <div className="mb-3 grid grid-cols-2 gap-2 rounded-xl bg-slate-200/60 p-1">
+                  {[
+                    ['existing', 'Use existing record'],
+                    ['new', 'Create new record'],
+                  ].map(([v, t]) => (
+                    <button type="button" key={v} onClick={() => setForm({ ...form, linkMode: v })} className={`relative rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${form.linkMode === v ? 'text-slate-900' : 'text-slate-500'}`}>
+                      {form.linkMode === v && <motion.span layoutId="link-mode" className="absolute inset-0 rounded-lg bg-white shadow-sm" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />}
+                      <span className="relative z-10">{t}</span>
+                    </button>
+                  ))}
+                </div>
+                {form.linkMode === 'existing' ? (
+                  <select className="field" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} required>
+                    <option value="">Select employee…</option>
+                    {lookups.employees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.full_name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="space-y-3">
+                    <input className="field" placeholder="Employee ID" value={form.newEmployee.employeeCode} onChange={(e) => setForm({ ...form, newEmployee: { ...form.newEmployee, employeeCode: e.target.value } })} required />
+                    <input className="field" placeholder="Full name (Last, First)" value={form.newEmployee.name} onChange={(e) => setForm({ ...form, newEmployee: { ...form.newEmployee, name: e.target.value } })} required />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <select className="field" value={form.newEmployee.hubId} onChange={(e) => setForm({ ...form, newEmployee: { ...form.newEmployee, hubId: e.target.value, departmentId: '' } })} required>
+                        <option value="">Hub…</option>
+                        {lookups.hubs.map((h) => (
+                          <option key={h.id} value={h.id}>
+                            {h.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select className="field" value={form.newEmployee.departmentId} onChange={(e) => setForm({ ...form, newEmployee: { ...form.newEmployee, departmentId: e.target.value } })} required disabled={!form.newEmployee.hubId}>
+                        <option value="">Department…</option>
+                        {lookups.departments
+                          .filter((d) => String(d.hub_id) === String(form.newEmployee.hubId))
+                          .map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+                <button type="button" className="btn btn-muted" onClick={close}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary sm:min-w-40">Create account</button>
+              </div>
+            </form>
+          )}
+        </Modal>
+      )}
+
+      {linkTarget && (
+        <Modal title="Link to an employee" subtitle="Connect this account to an employee record" icon={Link2} size="max-w-lg" onClose={() => setLinkTarget(null)}>
+          {(close) => (
+            <form onSubmit={linkExisting} className="space-y-5">
+              <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-4">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-gradient-to-br from-teal-100 to-emerald-100 text-sm font-bold text-teal-800">
+                  {(linkTarget.login || '#').charAt(0).toUpperCase()}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-bold">{linkTarget.login || `Account #${linkTarget.id}`}</div>
+                  <div className="text-xs text-slate-500">Account #{linkTarget.id}</div>
+                </div>
+                <span className={`pill ${linkTarget.role === 'Superadmin' ? 'bg-violet-50 text-violet-700' : 'bg-teal-50 text-teal-700'}`}>{linkTarget.role}</span>
+              </div>
+              <div className="flex items-start gap-3 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">
+                <ShieldCheck size={17} className="mt-0.5 shrink-0" />
+                <p className="leading-relaxed">Until it is linked, this person cannot be reported, and complaints about them cannot be hidden from their own account.</p>
+              </div>
+              <label className="block">
+                <span className="label">Employee record</span>
+                <select className="field" value={linkEmployeeId} onChange={(e) => setLinkEmployeeId(e.target.value)} required>
                   <option value="">Select employee…</option>
                   {lookups.employees.map((emp) => (
                     <option key={emp.id} value={emp.id}>
@@ -353,75 +484,15 @@ export default function Settings() {
                     </option>
                   ))}
                 </select>
-              ) : (
-                <div className="space-y-3">
-                  <input
-                    className="field"
-                    placeholder="Employee ID"
-                    value={form.newEmployee.employeeCode}
-                    onChange={(e) => setForm({ ...form, newEmployee: { ...form.newEmployee, employeeCode: e.target.value } })}
-                    required
-                  />
-                  <input
-                    className="field"
-                    placeholder="Full name (Last, First)"
-                    value={form.newEmployee.name}
-                    onChange={(e) => setForm({ ...form, newEmployee: { ...form.newEmployee, name: e.target.value } })}
-                    required
-                  />
-                  <select
-                    className="field"
-                    value={form.newEmployee.hubId}
-                    onChange={(e) => setForm({ ...form, newEmployee: { ...form.newEmployee, hubId: e.target.value, departmentId: '' } })}
-                    required
-                  >
-                    <option value="">Hub…</option>
-                    {lookups.hubs.map((h) => (
-                      <option key={h.id} value={h.id}>
-                        {h.name}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    className="field"
-                    value={form.newEmployee.departmentId}
-                    onChange={(e) => setForm({ ...form, newEmployee: { ...form.newEmployee, departmentId: e.target.value } })}
-                    required
-                  >
-                    <option value="">Department…</option>
-                    {lookups.departments
-                      .filter((d) => String(d.hub_id) === String(form.newEmployee.hubId))
-                      .map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-              )}
-            </div>
-            <button className="btn btn-primary w-full">Create account</button>
-          </form>
-        </Modal>
-      )}
-      {linkTarget && (
-        <Modal title={`Link ${linkTarget.login || 'account #' + linkTarget.id} to an employee`} onClose={() => setLinkTarget(null)}>
-          <form onSubmit={linkExisting} className="space-y-4">
-            <select
-              className="field"
-              value={linkEmployeeId}
-              onChange={(e) => setLinkEmployeeId(e.target.value)}
-              required
-            >
-              <option value="">Select employee…</option>
-              {lookups.employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.full_name}
-                </option>
-              ))}
-            </select>
-            <button className="btn btn-primary w-full">Save link</button>
-          </form>
+              </label>
+              <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+                <button type="button" className="btn btn-muted" onClick={close}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary sm:min-w-36">Save link</button>
+              </div>
+            </form>
+          )}
         </Modal>
       )}
     </div>

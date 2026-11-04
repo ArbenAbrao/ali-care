@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { api, messageFromError } from '../api/client';
-import { Search, ChevronLeft, ChevronRight, Download, Inbox } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Download, Inbox, ArrowUpRight, MapPin, Clock, ClipboardList, ShieldAlert, CalendarDays, Building2, Layers, Copy } from 'lucide-react';
 import Modal from '../components/Modal';
-import { PageHeader, container, item, severityStyle } from '../components/ui';
+import { toast } from '../components/Toast';
+import { PageHeader, container, item, severityStyle, initials, timeAgo } from '../components/ui';
 
 function SeverityPill({ level }) {
   const s = severityStyle[level] || severityStyle.Low;
@@ -72,8 +73,10 @@ export default function Complaints() {
       a.download = 'ali-care-report.csv';
       a.click();
       URL.revokeObjectURL(a.href);
+      toast.success('CSV exported', 'ali-care-report.csv was downloaded.');
     } catch (e) {
       setError(messageFromError(e));
+      toast.error('Export failed', messageFromError(e));
     }
   }
 
@@ -88,8 +91,10 @@ export default function Complaints() {
       a.download = 'ali-care-report.pdf';
       a.click();
       URL.revokeObjectURL(a.href);
+      toast.success('PDF exported', 'ali-care-report.pdf was downloaded.');
     } catch (e) {
       setError(messageFromError(e));
+      toast.error('Export failed', messageFromError(e));
     }
   }
 
@@ -156,6 +161,28 @@ export default function Complaints() {
         </select>
       </div>
 
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        {['', 'Low', 'Medium', 'High', 'Critical'].map((l) => {
+          const on = severity === l;
+          return (
+            <button
+              key={l || 'all'}
+              onClick={() => {
+                setPage(1);
+                setSeverity(l);
+              }}
+              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all ${
+                on ? 'bg-[color:var(--sidebar)] text-white shadow-lg' : 'bg-white text-slate-600 ring-1 ring-[color:var(--line)] hover:bg-slate-50'
+              }`}
+            >
+              {l && <span className="h-2 w-2 rounded-full" style={{ background: severityStyle[l].hex }} />}
+              {l || 'All'}
+            </button>
+          );
+        })}
+        <span className="ml-auto text-sm text-slate-500">{data.total} result{data.total === 1 ? '' : 's'}</span>
+      </div>
+
       {!loaded ? (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
           {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -184,23 +211,38 @@ export default function Complaints() {
               <motion.button
                 key={x.id}
                 variants={item}
-                whileHover={{ y: -3 }}
-                whileTap={{ scale: 0.99 }}
+                whileHover={{ y: -5 }}
+                whileTap={{ scale: 0.985 }}
                 onClick={() => open(x.id)}
-                className="panel relative overflow-hidden text-left p-5 pl-6 transition-shadow hover:shadow-[0_18px_40px_-16px_rgba(6,27,26,0.3)]"
+                className="panel relative overflow-hidden text-left p-5 pl-6 transition-shadow hover:shadow-[0_22px_44px_-16px_rgba(10,22,64,0.35)]"
               >
                 <span className={`absolute inset-y-0 left-0 w-1.5 ${s.bar}`} />
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-slate-500">Concern ID</span>
+                  <span className="text-xs font-medium text-slate-500">Concern ID</span>
                   <SeverityPill level={x.severity} />
                 </div>
                 <div className="text-3xl font-extrabold tracking-tight mt-2 tabular-nums">#{x.id}</div>
-                <div className="font-semibold mt-4 truncate">{x.reported_names || 'Reported employee'}</div>
-                <div className="text-xs text-slate-500 mt-3">
-                  {x.hub_name}
-                  {x.department_name ? ` · ${x.department_name}` : ''}
+                <div className="mt-4 flex items-center gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-teal-100 to-emerald-100 text-xs font-bold text-teal-800">
+                    {initials(x.reported_names?.split(';')[0] || '?')}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-xs text-slate-500">Complained about</div>
+                    <div className="font-semibold truncate">{x.reported_names || 'Reported employee'}</div>
+                  </div>
                 </div>
-                <div className="text-xs text-slate-400 mt-1">{String(x.created_at).slice(0, 16)}</div>
+                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-100 pt-3 text-xs text-slate-500">
+                  <span className="inline-flex items-center gap-1">
+                    <MapPin size={13} /> {x.hub_name}
+                    {x.department_name ? ` · ${x.department_name}` : ''}
+                  </span>
+                  <span className="inline-flex items-center gap-1" title={String(x.created_at)}>
+                    <Clock size={13} /> {timeAgo(x.created_at)}
+                  </span>
+                  <span className="ml-auto inline-flex items-center gap-1 font-semibold text-teal-700">
+                    View <ArrowUpRight size={14} />
+                  </span>
+                </div>
               </motion.button>
             );
           })}
@@ -226,46 +268,104 @@ export default function Complaints() {
       </div>
 
       {detail && (
-        <Modal title={`Concern #${detail.id}`} onClose={() => setDetail(null)}>
-          <div className="space-y-5">
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div className="rounded-2xl bg-slate-50 p-4">
-                <div className="label">Level of Concern</div>
-                <SeverityPill level={detail.severity} />
-              </div>
-              <div className="rounded-2xl bg-slate-50 p-4">
-                <div className="label">Date</div>
-                <b>{String(detail.createdAt)}</b>
-              </div>
-            </div>
-            <div>
-              <div className="label">Person(s) complained about</div>
-              <div className="flex flex-wrap gap-2">
-                {detail.reportedEmployees.map((p, i) => (
-                  <span key={i} className="rounded-full bg-teal-50 px-3 py-1 text-sm font-semibold text-teal-800">
-                    {p.full_name}
+        <Modal
+          title={`Concern #${detail.id}`}
+          subtitle="Confidential complaint details"
+          icon={ClipboardList}
+          onClose={() => setDetail(null)}
+        >
+          {(close) => {
+            const s = severityStyle[detail.severity] || severityStyle.Low;
+            const text = String(detail.message || '').trim();
+            const words = text ? text.split(/\s+/).length : 0;
+            return (
+              <div className="space-y-5">
+                <div
+                  className="relative flex items-center gap-4 overflow-hidden rounded-2xl p-5 text-white"
+                  style={{ background: `linear-gradient(120deg, ${s.hex}, ${s.hex}b3)` }}
+                >
+                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20">
+                    <ShieldAlert size={22} />
                   </span>
-                ))}
+                  <div>
+                    <div className="text-xs font-medium text-white/80">Level of concern</div>
+                    <div className="text-2xl font-extrabold leading-tight">{detail.severity}</div>
+                  </div>
+                  <div className="ml-auto text-right">
+                    <div className="text-xs font-medium text-white/80">Concern ID</div>
+                    <div className="text-2xl font-extrabold tabular-nums leading-tight">#{detail.id}</div>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {[
+                    [CalendarDays, 'Submitted', String(detail.createdAt).slice(0, 16), timeAgo(detail.createdAt)],
+                    [Building2, 'Hub', detail.hub || '—', null],
+                    [Layers, 'Department', detail.department || 'Not specified', null],
+                  ].map(([Icon, label, value, sub]) => (
+                    <div key={label} className="rounded-2xl bg-slate-50 p-4">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                        <Icon size={14} /> {label}
+                      </div>
+                      <div className="mt-1.5 font-bold leading-snug">{value}</div>
+                      {sub && <div className="text-xs text-slate-400">{sub}</div>}
+                    </div>
+                  ))}
+                </div>
+
+                <div>
+                  <div className="label">
+                    Person(s) complained about ({detail.reportedEmployees.length})
+                  </div>
+                  <div className="space-y-2">
+                    {detail.reportedEmployees.map((p, i) => (
+                      <div key={i} className="flex items-center gap-3 rounded-2xl border border-[color:var(--line)] p-3">
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-teal-100 to-emerald-100 text-xs font-bold text-teal-800">
+                          {initials(p.full_name)}
+                        </span>
+                        <span className="font-semibold">{p.full_name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="label">Subject</div>
+                  <p className="whitespace-pre-wrap rounded-2xl bg-slate-50 px-4 py-3 font-semibold">
+                    {detail.subject || 'No subject provided'}
+                  </p>
+                </div>
+
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <div className="label !mb-0">Complaint message</div>
+                    <span className="text-xs text-slate-400">
+                      {words} word{words === 1 ? '' : 's'} · {text.length} characters
+                    </span>
+                  </div>
+                  <div className="relative rounded-2xl bg-slate-50 p-4 pl-5">
+                    <span className="absolute inset-y-3 left-0 w-1 rounded-full" style={{ background: s.hex }} />
+                    <p className="whitespace-pre-wrap break-words leading-relaxed">{detail.message}</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+                  <button className="btn btn-muted" onClick={close}>
+                    Close
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(`#${detail.id}`);
+                      toast.success('Concern ID copied', `#${detail.id} is on your clipboard.`);
+                    }}
+                  >
+                    <Copy size={16} /> Copy concern ID
+                  </button>
+                </div>
               </div>
-            </div>
-            <div>
-              <div className="label">Hub / Department</div>
-              <div>
-                {detail.hub}
-                {detail.department ? ` / ${detail.department}` : ''}
-              </div>
-            </div>
-            <div>
-              <div className="label">Subject</div>
-              <p className="whitespace-pre-wrap">{detail.subject || 'No subject provided'}</p>
-            </div>
-            <div>
-              <div className="label">Complaint Message</div>
-              <p className="whitespace-pre-wrap break-words rounded-2xl bg-slate-50 p-4 leading-relaxed">
-                {detail.message}
-              </p>
-            </div>
-          </div>
+            );
+          }}
         </Modal>
       )}
     </div>
